@@ -61,7 +61,7 @@ const App = () => {
       name: 'Baseline Model',
       data: { 
         nhAmount: 100000, 
-        targetPay: 140000, 
+        targetPay: 40000, 
         refreshPercentOfNh: 25, 
         nhSchedule: [25, 25, 25, 25], 
         refSchedule: [30, 30, 20, 20], 
@@ -571,7 +571,7 @@ const App = () => {
                               return null;
                             }} />
                             <Legend iconType="rect" iconSize={12} wrapperStyle={{ paddingTop: '15px', fontSize: '10px', fontWeight: 'bold' }} />
-                            <Bar dataKey="NH" name="Extension" stackId="a" fill="#4f86f7" />
+                            <Bar dataKey="NH" name="New Hire Grant" stackId="a" fill="#4f86f7" />
                             <Bar dataKey="R1" name="Y1 Refresh" stackId="a" fill="#e55347" />
                             <Bar dataKey="R2" name="Y2 Refresh" stackId="a" fill="#f6c244" />
                             <Bar dataKey="R3" name="Y3 Refresh" stackId="a" fill="#5cb35c" />
@@ -612,7 +612,7 @@ const App = () => {
                                       <span className="text-xs font-black text-slate-800 font-mono">{formatCurrency(v.total)}</span>
                                       <div className="invisible group-hover/cell:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-48 bg-slate-900 text-white p-3 rounded-xl shadow-2xl z-30">
                                         <div className="space-y-1 text-left">
-                                          {v.NH > 0 && <div className="flex justify-between text-[9px] gap-4"><span>Extension:</span> <span>{formatCurrency(v.NH)}</span></div>}
+                                          {v.NH > 0 && <div className="flex justify-between text-[9px] gap-4"><span>New Hire Grant:</span> <span>{formatCurrency(v.NH)}</span></div>}
                                           {v.R1 > 0 && <div className="flex justify-between text-[9px] gap-4"><span>R1 (2024):</span> <span>{formatCurrency(v.R1)}</span></div>}
                                           {v.R2 > 0 && <div className="flex justify-between text-[9px] gap-4"><span>R2 (2025):</span> <span>{formatCurrency(v.R2)}</span></div>}
                                           {v.R3 > 0 && <div className="flex justify-between text-[9px] gap-4"><span>R3 (2026):</span> <span>{formatCurrency(v.R3)}</span></div>}
