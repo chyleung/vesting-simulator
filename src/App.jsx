@@ -197,9 +197,9 @@ const App = () => {
               <div className="bg-indigo-600 p-2 rounded-lg text-white">
                 <BarChart3 size={24} />
               </div>
-              <h1 className="text-3xl font-bold tracking-tight">Vesting Layer Simulator</h1>
+              <h1 className="text-3xl font-bold tracking-tight">Vesting Simulator</h1>
             </div>
-            <p className="text-slate-500 font-medium">Strategic pay-parity modeling for 2024–2030 cohorts</p>
+            <p className="text-slate-500 font-medium">Scenario Modelling for Various LTI Vesting Schedules</p>
           </div>
           
           <div className="flex bg-white rounded-xl shadow-sm p-1.5 border border-slate-200">
@@ -325,7 +325,7 @@ const App = () => {
               <div className="mt-8 pt-8 border-t border-slate-100">
                 <div className="flex items-center gap-2 mb-4 text-indigo-600 font-bold text-xs uppercase tracking-wider">
                   <Calendar size={16} />
-                  <span>Year 1 Refresh Proration Logic</span>
+                  <span>Y1 Refresh Proration Logic</span>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   {Object.keys(proration).map(q => (
