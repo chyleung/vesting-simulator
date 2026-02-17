@@ -14,7 +14,9 @@ import {
   Zap,
   Trash2,
   Plus,
-  Bookmark
+  Bookmark,
+  Clock,
+  Layers
 } from 'lucide-react';
 
 const App = () => {
@@ -23,14 +25,30 @@ const App = () => {
   const [targetPay, setTargetPay] = useState(140000); 
   const [refreshPercentOfNh, setRefreshPercentOfNh] = useState(25); 
   
+  // Vesting Frequency
+  const [vestingFrequency, setVestingFrequency] = useState('quarterly'); // 'monthly' or 'quarterly'
+  
+  // Refresh Timing (0 = Jan, 11 = Dec)
+  const [refreshMonth, setRefreshMonth] = useState(11); 
+
+  // Vesting Schedules
   const [nhSchedule, setNhSchedule] = useState([25, 25, 25, 25]);
-  const [refSchedule, setRefSchedule] = useState([30, 30, 20, 20]); 
+  const [refSchedule, setRefSchedule] = useState([30, 30, 20, 20]); // Years 1-4
+  const [refScheduleLate, setRefScheduleLate] = useState([25, 25, 25, 25]); // Years 5-6
 
   const [proration, setProration] = useState({
     Q1: 100,
     Q2: 75,
     Q3: 50,
     Q4: 25
+  });
+
+  // Y1 Refresh Cliff Logic (Months)
+  const [cliffSettings, setCliffSettings] = useState({
+    Q1: 0,
+    Q2: 0,
+    Q3: 0,
+    Q4: 0
   });
 
   const [activeTab, setActiveTab] = useState('overview'); 
@@ -41,7 +59,18 @@ const App = () => {
     {
       id: 'default',
       name: 'Baseline Model',
-      data: { nhAmount: 100000, targetPay: 40000, refreshPercentOfNh: 25, nhSchedule: [25, 25, 25, 25], refSchedule: [25, 25, 25, 25], proration: { Q1: 100, Q2: 75, Q3: 50, Q4: 25 } }
+      data: { 
+        nhAmount: 100000, 
+        targetPay: 140000, 
+        refreshPercentOfNh: 25, 
+        nhSchedule: [25, 25, 25, 25], 
+        refSchedule: [30, 30, 20, 20], 
+        refScheduleLate: [25, 25, 25, 25],
+        proration: { Q1: 100, Q2: 75, Q3: 50, Q4: 25 },
+        vestingFrequency: 'quarterly',
+        refreshMonth: 11,
+        cliffSettings: { Q1: 0, Q2: 0, Q3: 0, Q4: 0 }
+      }
     }
   ]);
   const [newScenarioName, setNewScenarioName] = useState('');
@@ -54,8 +83,11 @@ const App = () => {
     { id: 'Q4', name: 'Nov 1 Joiner', startDate: '2024-11-01', firstVest: '2025-02-01' },
   ];
 
-  // Added R4 and R5 refresh issuance dates (Dec 1 annually)
-  const REFRESH_DATES = ['2024-12-01', '2025-12-01', '2026-12-01', '2027-12-01', '2028-12-01'];
+  // Month Options
+  const MONTH_NAMES = [
+    'January', 'February', 'March', 'April', 'May', 'June', 
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
 
   const months = useMemo(() => {
     const list = [];
@@ -67,6 +99,12 @@ const App = () => {
     }
     return list;
   }, []);
+
+  // Calculate dynamic refresh dates based on selected month
+  const refreshDatesList = useMemo(() => {
+    // Years 2024 through 2028
+    return [2024, 2025, 2026, 2027, 2028].map(year => new Date(year, refreshMonth, 1));
+  }, [refreshMonth]);
 
   // --- Scenario Functions ---
   const saveScenario = () => {
@@ -80,7 +118,11 @@ const App = () => {
         refreshPercentOfNh,
         nhSchedule: [...nhSchedule],
         refSchedule: [...refSchedule],
-        proration: { ...proration }
+        refScheduleLate: [...refScheduleLate],
+        proration: { ...proration },
+        vestingFrequency,
+        refreshMonth,
+        cliffSettings: { ...cliffSettings }
       }
     };
     setScenarios([...scenarios, newScenario]);
@@ -93,7 +135,11 @@ const App = () => {
     setRefreshPercentOfNh(scenario.data.refreshPercentOfNh);
     setNhSchedule(scenario.data.nhSchedule);
     setRefSchedule(scenario.data.refSchedule);
+    setRefScheduleLate(scenario.data.refScheduleLate || [25, 25, 25, 25]);
     setProration(scenario.data.proration);
+    setVestingFrequency(scenario.data.vestingFrequency || 'quarterly');
+    setRefreshMonth(scenario.data.refreshMonth !== undefined ? scenario.data.refreshMonth : 11);
+    setCliffSettings(scenario.data.cliffSettings || { Q1: 0, Q2: 0, Q3: 0, Q4: 0 });
   };
 
   const deleteScenario = (id) => {
@@ -102,6 +148,9 @@ const App = () => {
 
   // --- Calculation Engine ---
   const data = useMemo(() => {
+    const vestsPerYear = vestingFrequency === 'monthly' ? 12 : 4;
+    const monthsPerVest = vestingFrequency === 'monthly' ? 1 : 3;
+
     return JOINERS.map(joiner => {
       const monthlyVesting = months.map(m => ({
         date: m,
@@ -109,26 +158,38 @@ const App = () => {
         NH: 0, R1: 0, R2: 0, R3: 0, R4: 0, R5: 0, total: 0
       }));
 
+      // 1. Calculate New Hire Grant
       const nhFirstVest = new Date(joiner.firstVest);
+      let nhStart = new Date(nhFirstVest);
+      if (vestingFrequency === 'monthly') {
+        nhStart = new Date(joiner.startDate);
+        nhStart.setMonth(nhStart.getMonth() + 1);
+      }
+
       for (let y = 0; y < 4; y++) {
         const annualAmount = nhAmount * (nhSchedule[y] / 100);
-        const quarterlyAmount = annualAmount / 4;
-        for (let q = 0; q < 4; q++) {
-          const vestDate = new Date(nhFirstVest);
-          vestDate.setMonth(nhFirstVest.getMonth() + (y * 12) + (q * 3));
+        const vestAmount = annualAmount / vestsPerYear;
+        
+        for (let v = 0; v < vestsPerYear; v++) {
+          const vestDate = new Date(nhStart);
+          vestDate.setMonth(nhStart.getMonth() + (y * 12) + (v * monthsPerVest));
+          
           const mIdx = monthlyVesting.findIndex(mv => mv.dateKey === `${vestDate.getFullYear()}-${String(vestDate.getMonth() + 1).padStart(2, '0')}`);
           if (mIdx !== -1) {
-            monthlyVesting[mIdx].NH += quarterlyAmount;
-            monthlyVesting[mIdx].total += quarterlyAmount;
+            monthlyVesting[mIdx].NH += vestAmount;
+            monthlyVesting[mIdx].total += vestAmount;
           }
         }
       }
 
-      REFRESH_DATES.forEach((rDateStr, rIdx) => {
+      // 2. Calculate Refresh Grants
+      refreshDatesList.forEach((grantDate, rIdx) => {
         const rKey = `R${rIdx + 1}`;
-        const firstVestDate = new Date(rDateStr);
-        firstVestDate.setMonth(firstVestDate.getMonth() + 3); 
+        // Standard first vest is grant date + interval
+        const firstVestDate = new Date(grantDate);
+        firstVestDate.setMonth(grantDate.getMonth() + monthsPerVest); 
         
+        // --- Gap Calculation Window ---
         const windowStart = new Date(firstVestDate);
         const windowEnd = new Date(windowStart);
         windowEnd.setMonth(windowEnd.getMonth() + 11);
@@ -142,27 +203,45 @@ const App = () => {
         const baseRefreshAmount = nhAmount * (refreshPercentOfNh / 100);
         const annualGap = Math.max(0, targetPay - projectedVestingInWindow);
         
-        const gapGrantSize = refSchedule[0] > 0 ? annualGap / (refSchedule[0] / 100) : 0;
+        // Determine which schedule to use for Gap Sizing logic
+        // Use Year 1 of the schedule for sizing
+        const activeSchedule = rIdx >= 3 ? refScheduleLate : refSchedule;
+        const gapGrantSize = activeSchedule[0] > 0 ? annualGap / (activeSchedule[0] / 100) : 0;
+        
         let finalGrantSize = Math.max(baseRefreshAmount, gapGrantSize);
 
         if (rIdx === 0) finalGrantSize *= (proration[joiner.id] / 100);
 
+        // Cliff Logic Setup for R1
+        const cliffMonths = (rIdx === 0) ? cliffSettings[joiner.id] : 0;
+        const cliffDate = new Date(grantDate); 
+        cliffDate.setMonth(grantDate.getMonth() + cliffMonths);
+
         for (let y = 0; y < 4; y++) {
-          const annualAmount = finalGrantSize * (refSchedule[y] / 100);
-          const quarterlyAmount = annualAmount / 4;
-          for (let q = 0; q < 4; q++) {
-            const vestDate = new Date(firstVestDate);
-            vestDate.setMonth(firstVestDate.getMonth() + (y * 12) + (q * 3));
+          const annualAmount = finalGrantSize * (activeSchedule[y] / 100);
+          const vestAmount = annualAmount / vestsPerYear;
+          
+          for (let v = 0; v < vestsPerYear; v++) {
+            let vestDate = new Date(firstVestDate);
+            vestDate.setMonth(firstVestDate.getMonth() + (y * 12) + (v * monthsPerVest));
+            
+            // Apply Cliff Logic for R1
+            if (rIdx === 0 && cliffMonths > 0) {
+              if (vestDate < cliffDate) {
+                vestDate = cliffDate; // Push to cliff date
+              }
+            }
+
             const mIdx = monthlyVesting.findIndex(mv => mv.dateKey === `${vestDate.getFullYear()}-${String(vestDate.getMonth() + 1).padStart(2, '0')}`);
             if (mIdx !== -1) {
-              monthlyVesting[mIdx][rKey] += quarterlyAmount;
-              monthlyVesting[mIdx].total += quarterlyAmount;
+              monthlyVesting[mIdx][rKey] += vestAmount;
+              monthlyVesting[mIdx].total += vestAmount;
             }
           }
         }
       });
 
-      // Updated to include Year 5 and Year 6
+      // Tenure Year Stats (Y1-Y6)
       const tenureYearStats = [1, 2, 3, 4, 5, 6].map(year => {
         const hireMonthIndex = months.findIndex(m => {
           const sd = new Date(joiner.startDate);
@@ -188,7 +267,7 @@ const App = () => {
 
       return { ...joiner, monthlyVesting, tenureYearStats, tenureY1: tenureYearStats[0].total, tenureY2: tenureYearStats[1].total };
     });
-  }, [nhAmount, targetPay, refreshPercentOfNh, nhSchedule, refSchedule, proration, months]);
+  }, [nhAmount, targetPay, refreshPercentOfNh, nhSchedule, refSchedule, refScheduleLate, proration, months, vestingFrequency, cliffSettings, refreshDatesList]);
 
   const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 
@@ -280,8 +359,27 @@ const App = () => {
               </div>
               
               <div className="space-y-5">
+                {/* Vesting Frequency Toggle */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Target Annual Pay</label>
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Vesting Frequency</label>
+                  <div className="flex bg-slate-100 p-1 rounded-lg">
+                    <button
+                      onClick={() => setVestingFrequency('monthly')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-bold rounded-md transition-all ${vestingFrequency === 'monthly' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}
+                    >
+                      <Clock size={12} /> Monthly
+                    </button>
+                    <button
+                      onClick={() => setVestingFrequency('quarterly')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-bold rounded-md transition-all ${vestingFrequency === 'quarterly' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}
+                    >
+                      <Layers size={12} /> Quarterly
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Target Annual LTI</label>
                   <div className="relative">
                     <Zap className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500" size={14} />
                     <input type="number" value={targetPay} onChange={e => setTargetPay(Number(e.target.value))} className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-4 py-2.5 font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
@@ -301,6 +399,18 @@ const App = () => {
                     <span className="text-[10px] text-slate-500 font-medium">of New Hire Grant</span>
                   </div>
                 </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Refresh Issuance Month</label>
+                  <select 
+                    value={refreshMonth}
+                    onChange={e => setRefreshMonth(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-xs"
+                  >
+                    {MONTH_NAMES.map((m, idx) => (
+                      <option key={idx} value={idx}>{m}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="mt-8 pt-8 border-t border-slate-100">
@@ -318,10 +428,18 @@ const App = () => {
                     </div>
                   </div>
                   <div>
-                    <span className="text-xs font-semibold text-slate-700 block mb-3">Refreshes (Years 1-4)</span>
+                    <span className="text-xs font-semibold text-slate-700 block mb-3">Refreshes (Years 1-3)</span>
                     <div className="grid grid-cols-4 gap-2">
                       {refSchedule.map((val, i) => (
                         <input key={i} type="number" value={val} onChange={e => { const newS = [...refSchedule]; newS[i] = Number(e.target.value); setRefSchedule(newS); }} className="bg-slate-50 border border-slate-200 text-center font-bold rounded-lg py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none"/>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-slate-700 block mb-3">Refreshes (Years 4+)</span>
+                    <div className="grid grid-cols-4 gap-2">
+                      {refScheduleLate.map((val, i) => (
+                        <input key={i} type="number" value={val} onChange={e => { const newS = [...refScheduleLate]; newS[i] = Number(e.target.value); setRefScheduleLate(newS); }} className="bg-slate-50 border border-slate-200 text-center font-bold rounded-lg py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none"/>
                       ))}
                     </div>
                   </div>
@@ -345,6 +463,30 @@ const App = () => {
                   ))}
                 </div>
               </div>
+
+              <div className="mt-8 pt-8 border-t border-slate-100">
+                <div className="flex items-center gap-2 mb-4 text-indigo-600 font-bold text-xs uppercase tracking-wider">
+                  <Clock size={16} />
+                  <span>Y1 Refresh Cliff Logic (Months)</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  {Object.keys(cliffSettings).map(q => (
+                    <div key={q}>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{q} Joiner Cliff</label>
+                      <div className="relative">
+                        <input 
+                          type="number" 
+                          value={cliffSettings[q]} 
+                          onChange={e => setCliffSettings({...cliffSettings, [q]: Number(e.target.value)})} 
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-3 pr-6 py-2 text-xs font-bold" 
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">Mo</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
             </div>
             
             <div className="bg-indigo-600 p-5 rounded-2xl text-white shadow-lg shadow-indigo-200 relative overflow-hidden group">
@@ -366,7 +508,6 @@ const App = () => {
                   <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                     <h2 className="text-lg font-bold flex items-center gap-2 px-2">
                       <Users size={20} className="text-indigo-600" />
-                      {/* Updated Title */}
                       Comparison of Year {comparisonYear} Vesting by Hired Month
                     </h2>
                     <div className="flex p-1 bg-slate-100 rounded-xl">
@@ -406,7 +547,6 @@ const App = () => {
                   {data.map(joiner => (
                     <div key={joiner.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                       <div className="flex justify-between items-start mb-6">
-                        {/* Updated Title */}
                         <h3 className="text-lg font-black text-slate-800">{joiner.name} YOY Vest</h3>
                         <div className="text-[9px] bg-slate-100 text-slate-500 px-3 py-1 rounded-full font-black uppercase tracking-widest border border-slate-200">Total: {formatCurrency(joiner.tenureYearStats.reduce((acc, curr) => acc + curr.total, 0))}</div>
                       </div>
@@ -431,7 +571,6 @@ const App = () => {
                               return null;
                             }} />
                             <Legend iconType="rect" iconSize={12} wrapperStyle={{ paddingTop: '15px', fontSize: '10px', fontWeight: 'bold' }} />
-                            {/* Visual palette matching requested style with extra layers */}
                             <Bar dataKey="NH" name="Extension" stackId="a" fill="#4f86f7" />
                             <Bar dataKey="R1" name="Y1 Refresh" stackId="a" fill="#e55347" />
                             <Bar dataKey="R2" name="Y2 Refresh" stackId="a" fill="#f6c244" />
