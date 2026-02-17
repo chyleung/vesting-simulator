@@ -25,7 +25,7 @@ const App = () => {
   const [refreshPercentOfNh, setRefreshPercentOfNh] = useState(25); 
   
   const [nhSchedule, setNhSchedule] = useState([25, 25, 25, 25]);
-  const [refSchedule, setRefSchedule] = useState([25, 25, 25, 25]);
+  const [refSchedule, setRefSchedule] = useState([30, 30, 20, 20]); // Matches your example (30/30/20/20)
 
   const [proration, setProration] = useState({
     Q1: 100,
@@ -42,7 +42,7 @@ const App = () => {
     {
       id: 'default',
       name: 'Baseline Model',
-      data: { nhAmount: 100000, targetPay: 40000, refreshPercentOfNh: 25, nhSchedule: [25, 25, 25, 25], refSchedule: [25, 25, 25, 25], proration: { Q1: 100, Q2: 75, Q3: 50, Q4: 25 } }
+      data: { nhAmount: 100000, targetPay: 40000, refreshPercentOfNh: 25, nhSchedule: [25, 25, 25, 25], refSchedule: [30, 30, 20, 20], proration: { Q1: 100, Q2: 75, Q3: 50, Q4: 25 } }
     }
   ]);
   const [newScenarioName, setNewScenarioName] = useState('');
@@ -141,6 +141,8 @@ const App = () => {
 
         const baseRefreshAmount = nhAmount * (refreshPercentOfNh / 100);
         const annualGap = Math.max(0, targetPay - projectedVestingInWindow);
+        
+        // Logic: Grant = Gap / (Y1_Schedule_Percent / 100)
         const gapGrantSize = refSchedule[0] > 0 ? annualGap / (refSchedule[0] / 100) : 0;
         let finalGrantSize = Math.max(baseRefreshAmount, gapGrantSize);
 
@@ -421,6 +423,7 @@ const App = () => {
                               return null;
                             }} />
                             <Legend iconType="circle" wrapperStyle={{ paddingTop: '15px', fontSize: '9px', fontWeight: 'bold' }} />
+                            {/* Blue Bar for New Hire, following your requested style */}
                             <Bar dataKey="NH" name="New Hire" stackId="a" fill="#4f46e5" />
                             <Bar dataKey="R1" name="Y1 Refresh" stackId="a" fill="#ef4444" />
                             <Bar dataKey="R2" name="Y2 Refresh" stackId="a" fill="#f59e0b" />
