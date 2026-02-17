@@ -12,7 +12,6 @@ import {
   Info,
   DollarSign,
   Zap,
-  Save,
   Trash2,
   Plus,
   Bookmark
@@ -21,11 +20,11 @@ import {
 const App = () => {
   // --- Global State / Parameters ---
   const [nhAmount, setNhAmount] = useState(100000);
-  const [targetPay, setTargetPay] = useState(40000);
+  const [targetPay, setTargetPay] = useState(140000); 
   const [refreshPercentOfNh, setRefreshPercentOfNh] = useState(25); 
   
   const [nhSchedule, setNhSchedule] = useState([25, 25, 25, 25]);
-  const [refSchedule, setRefSchedule] = useState([30, 30, 20, 20]); // Matches your example (30/30/20/20)
+  const [refSchedule, setRefSchedule] = useState([30, 30, 20, 20]); 
 
   const [proration, setProration] = useState({
     Q1: 100,
@@ -42,7 +41,7 @@ const App = () => {
     {
       id: 'default',
       name: 'Baseline Model',
-      data: { nhAmount: 100000, targetPay: 40000, refreshPercentOfNh: 25, nhSchedule: [25, 25, 25, 25], refSchedule: [30, 30, 20, 20], proration: { Q1: 100, Q2: 75, Q3: 50, Q4: 25 } }
+      data: { nhAmount: 100000, targetPay: 40000, refreshPercentOfNh: 25, nhSchedule: [25, 25, 25, 25], refSchedule: [25, 25, 25, 25], proration: { Q1: 100, Q2: 75, Q3: 50, Q4: 25 } }
     }
   ]);
   const [newScenarioName, setNewScenarioName] = useState('');
@@ -55,7 +54,8 @@ const App = () => {
     { id: 'Q4', name: 'Nov 1 Joiner', startDate: '2024-11-01', firstVest: '2025-02-01' },
   ];
 
-  const REFRESH_DATES = ['2024-12-01', '2025-12-01', '2026-12-01'];
+  // Added R4 and R5 refresh issuance dates (Dec 1 annually)
+  const REFRESH_DATES = ['2024-12-01', '2025-12-01', '2026-12-01', '2027-12-01', '2028-12-01'];
 
   const months = useMemo(() => {
     const list = [];
@@ -106,7 +106,7 @@ const App = () => {
       const monthlyVesting = months.map(m => ({
         date: m,
         dateKey: `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`,
-        NH: 0, R1: 0, R2: 0, R3: 0, total: 0
+        NH: 0, R1: 0, R2: 0, R3: 0, R4: 0, R5: 0, total: 0
       }));
 
       const nhFirstVest = new Date(joiner.firstVest);
@@ -142,7 +142,6 @@ const App = () => {
         const baseRefreshAmount = nhAmount * (refreshPercentOfNh / 100);
         const annualGap = Math.max(0, targetPay - projectedVestingInWindow);
         
-        // Logic: Grant = Gap / (Y1_Schedule_Percent / 100)
         const gapGrantSize = refSchedule[0] > 0 ? annualGap / (refSchedule[0] / 100) : 0;
         let finalGrantSize = Math.max(baseRefreshAmount, gapGrantSize);
 
@@ -163,18 +162,25 @@ const App = () => {
         }
       });
 
-      const tenureYearStats = [1, 2, 3, 4].map(year => {
+      // Updated to include Year 5 and Year 6
+      const tenureYearStats = [1, 2, 3, 4, 5, 6].map(year => {
         const hireMonthIndex = months.findIndex(m => {
           const sd = new Date(joiner.startDate);
           return m.getFullYear() === sd.getFullYear() && m.getMonth() === sd.getMonth();
         });
         const startIdx = hireMonthIndex + 1 + (year - 1) * 12;
-        let stats = { name: `Y${year}`, NH: 0, R1: 0, R2: 0, R3: 0, total: 0 };
+        let stats = { name: `Y${year}`, NH: 0, R1: 0, R2: 0, R3: 0, R4: 0, R5: 0, total: 0 };
         for (let i = 0; i < 12; i++) {
           const currentIdx = startIdx + i;
           const monthData = monthlyVesting[currentIdx];
           if (monthData) {
-            stats.NH += monthData.NH; stats.R1 += monthData.R1; stats.R2 += monthData.R2; stats.R3 += monthData.R3; stats.total += monthData.total;
+            stats.NH += monthData.NH; 
+            stats.R1 += monthData.R1; 
+            stats.R2 += monthData.R2; 
+            stats.R3 += monthData.R3; 
+            stats.R4 += (monthData.R4 || 0); 
+            stats.R5 += (monthData.R5 || 0);
+            stats.total += monthData.total;
           }
         }
         return stats;
@@ -292,7 +298,7 @@ const App = () => {
                   <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Refresh Size (%)</label>
                   <div className="flex items-center gap-3">
                     <input type="number" value={refreshPercentOfNh} onChange={e => setRefreshPercentOfNh(Number(e.target.value))} className="w-24 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
-                    <span className="text-[10px] text-slate-500 font-medium">of NH Grant</span>
+                    <span className="text-[10px] text-slate-500 font-medium">of New Hire Grant</span>
                   </div>
                 </div>
               </div>
@@ -360,7 +366,8 @@ const App = () => {
                   <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                     <h2 className="text-lg font-bold flex items-center gap-2 px-2">
                       <Users size={20} className="text-indigo-600" />
-                      Comparison: Tenure Year {comparisonYear} Rolling Pay
+                      {/* Updated Title */}
+                      Comparison of Year {comparisonYear} Vesting by Hired Month
                     </h2>
                     <div className="flex p-1 bg-slate-100 rounded-xl">
                       {[1, 2].map(yr => (
@@ -399,12 +406,13 @@ const App = () => {
                   {data.map(joiner => (
                     <div key={joiner.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                       <div className="flex justify-between items-start mb-6">
-                        <h3 className="text-lg font-black text-slate-800">{joiner.name} Layers</h3>
+                        {/* Updated Title */}
+                        <h3 className="text-lg font-black text-slate-800">{joiner.name} YOY Vest</h3>
                         <div className="text-[9px] bg-slate-100 text-slate-500 px-3 py-1 rounded-full font-black uppercase tracking-widest border border-slate-200">Total: {formatCurrency(joiner.tenureYearStats.reduce((acc, curr) => acc + curr.total, 0))}</div>
                       </div>
-                      <div className="h-[250px] w-full">
+                      <div className="h-[280px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={joiner.tenureYearStats} barSize={40}>
+                          <BarChart data={joiner.tenureYearStats} barSize={35}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                             <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={12} fontWeight="bold" tick={{ fill: '#64748b' }} />
                             <YAxis axisLine={false} tickLine={false} fontSize={10} fontWeight="bold" tickFormatter={(v) => `$${v / 1000}K`} tick={{ fill: '#94a3b8' }} />
@@ -422,12 +430,14 @@ const App = () => {
                               }
                               return null;
                             }} />
-                            <Legend iconType="circle" wrapperStyle={{ paddingTop: '15px', fontSize: '9px', fontWeight: 'bold' }} />
-                            {/* Blue Bar for New Hire, following your requested style */}
-                            <Bar dataKey="NH" name="New Hire" stackId="a" fill="#4f46e5" />
-                            <Bar dataKey="R1" name="Y1 Refresh" stackId="a" fill="#ef4444" />
-                            <Bar dataKey="R2" name="Y2 Refresh" stackId="a" fill="#f59e0b" />
-                            <Bar dataKey="R3" name="Y3 Refresh" stackId="a" fill="#10b981" />
+                            <Legend iconType="rect" iconSize={12} wrapperStyle={{ paddingTop: '15px', fontSize: '10px', fontWeight: 'bold' }} />
+                            {/* Visual palette matching requested style with extra layers */}
+                            <Bar dataKey="NH" name="Extension" stackId="a" fill="#4f86f7" />
+                            <Bar dataKey="R1" name="Y1 Refresh" stackId="a" fill="#e55347" />
+                            <Bar dataKey="R2" name="Y2 Refresh" stackId="a" fill="#f6c244" />
+                            <Bar dataKey="R3" name="Y3 Refresh" stackId="a" fill="#5cb35c" />
+                            <Bar dataKey="R4" name="Y4 Refresh" stackId="a" fill="#9333ea" />
+                            <Bar dataKey="R5" name="Y5 Refresh" stackId="a" fill="#06b6d4" />
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
@@ -461,12 +471,14 @@ const App = () => {
                                   {v.total > 0 ? (
                                     <div className="inline-block relative group/cell">
                                       <span className="text-xs font-black text-slate-800 font-mono">{formatCurrency(v.total)}</span>
-                                      <div className="invisible group-hover/cell:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-44 bg-slate-900 text-white p-3 rounded-xl shadow-2xl z-30">
-                                        <div className="space-y-1">
-                                          {v.NH > 0 && <div className="flex justify-between text-[9px]"><span>NH:</span> <span>{formatCurrency(v.NH)}</span></div>}
-                                          {v.R1 > 0 && <div className="flex justify-between text-[9px]"><span>R1:</span> <span>{formatCurrency(v.R1)}</span></div>}
-                                          {v.R2 > 0 && <div className="flex justify-between text-[9px]"><span>R2:</span> <span>{formatCurrency(v.R2)}</span></div>}
-                                          {v.R3 > 0 && <div className="flex justify-between text-[9px]"><span>R3:</span> <span>{formatCurrency(v.R3)}</span></div>}
+                                      <div className="invisible group-hover/cell:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-48 bg-slate-900 text-white p-3 rounded-xl shadow-2xl z-30">
+                                        <div className="space-y-1 text-left">
+                                          {v.NH > 0 && <div className="flex justify-between text-[9px] gap-4"><span>Extension:</span> <span>{formatCurrency(v.NH)}</span></div>}
+                                          {v.R1 > 0 && <div className="flex justify-between text-[9px] gap-4"><span>R1 (2024):</span> <span>{formatCurrency(v.R1)}</span></div>}
+                                          {v.R2 > 0 && <div className="flex justify-between text-[9px] gap-4"><span>R2 (2025):</span> <span>{formatCurrency(v.R2)}</span></div>}
+                                          {v.R3 > 0 && <div className="flex justify-between text-[9px] gap-4"><span>R3 (2026):</span> <span>{formatCurrency(v.R3)}</span></div>}
+                                          {v.R4 > 0 && <div className="flex justify-between text-[9px] gap-4"><span>R4 (2027):</span> <span>{formatCurrency(v.R4)}</span></div>}
+                                          {v.R5 > 0 && <div className="flex justify-between text-[9px] gap-4"><span>R5 (2028):</span> <span>{formatCurrency(v.R5)}</span></div>}
                                         </div>
                                       </div>
                                     </div>
